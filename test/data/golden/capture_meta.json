@@ -1,0 +1,9 @@
+{
+  "captured_by": "test/data/golden/_capture.py",
+  "captured_from": "tsib",
+  "n_steps_short": 168,
+  "n_steps_year": 8760,
+  "note": "Zone parameters derived by tsib's own ThermalZone5R1C, so the fixture cannot drift from the model it pins. The expected results are copied unchanged from tsib's golden fixtures. Input time stamps are UTC; convert to 'timezone' to recover the local index the results were produced on.",
+  "timezone": "Europe/Berlin",
+  "tsib_commit": "ebd2cecb87ded24514dfc082e8e96144f81819e7"
+}
