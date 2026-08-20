@@ -1,0 +1,27 @@
+# directories
+.pytest_cache/
+__pycache__/
+trash/
+__enercore_cache__/
+.ipynb_checkpoints/
+*/.ipynb_checkpoints/
+.idea/
+.eggs/
+.vscode/
+dist
+.venv/
+
+# file types to ignore
+*.pyc
+*.egg-info
+.coverage
+*.png
+*.log
+*.orig
+
+# temporary office files
+~$*.xls*
+*.xlk
+
+# local backlog / design ideas — not for GitHub
+backlog/

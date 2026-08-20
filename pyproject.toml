@@ -1,0 +1,61 @@
+[project]
+name = "esmkit"
+version = "0.1.0"
+description = "Energy System Model Kit - a component kit for oemof-solph energy systems"
+readme = "README.md"
+license = "MIT"
+authors = [
+    { name = "Phillip Schlicht", email = "schlicht@fh-aachen.de" },
+]
+requires-python = ">=3.12"
+keywords = [
+    "energy system",
+    "optimization",
+    "oemof",
+    "thermal zone",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: End Users/Desktop",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Natural Language :: English",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+dependencies = [
+    "numpy",
+    "pandas",
+    "Pyomo",
+    "oemof-solph>=0.6.4",
+]
+
+[project.urls]
+Homepage = "https://github.com/simu-flex-lokal/esmkit"
+
+[project.optional-dependencies]
+gurobi = [
+    "gurobipy>=13.0.2",
+]
+highs = [
+    "highspy",
+]
+
+[dependency-groups]
+dev = ["pytest", "pytest-cov"]
+examples = ["jupyter", "matplotlib"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["esmkit"]
+
+[tool.hatch.build.targets.sdist]
+exclude = [
+    "/examples",
+]
