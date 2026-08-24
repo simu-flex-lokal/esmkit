@@ -182,7 +182,14 @@ def _thermal_storage(name, params, buses, inputs, n_steps, step_size_h):
 
 
 def _storage(name, params, buses, inputs, n_steps, step_size_h):
-    bus = registry.bus(buses, params, "bus", name)
+    """
+    Shared storage factory. Charging and discharging bus are given
+    separately, so a storage can bridge two buses (e.g. charge behind a
+    sub-meter and discharge in front of it). Both are mandatory, also when
+    they name the same bus.
+    """
+    bus_in = registry.bus(buses, params, "bus_in", name)
+    bus_out = registry.bus(buses, params, "bus_out", name)
     wacc = params.pop("wacc", 0.0)
     nominal = registry.capacity(params, n_steps * step_size_h, wacc)
     losses = registry.profile(
@@ -198,10 +205,14 @@ def _storage(name, params, buses, inputs, n_steps, step_size_h):
         max_storage_level=params.pop("soc_max", 1.0),
         balanced=params.pop("balanced", True),
         inputs={
-            bus: solph.Flow(nominal_capacity=params.pop("charge_power_limit", None))
+            bus_in: solph.Flow(
+                nominal_capacity=params.pop("charge_power_limit", None)
+            )
         },
         outputs={
-            bus: solph.Flow(nominal_capacity=params.pop("discharge_power_limit", None))
+            bus_out: solph.Flow(
+                nominal_capacity=params.pop("discharge_power_limit", None)
+            )
         },
         nominal_capacity=nominal,
     )

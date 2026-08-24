@@ -39,7 +39,9 @@ def test_battery_shifts_energy_into_expensive_hours():
     # default round-trip efficiency (0.95/0.95): lossy storage makes the
     # optimum unique. With lossless storage, shuffling energy *within* the
     # expensive hours is cost-neutral and the optimum is degenerate.
-    spec.add_component("battery", "battery", bus="elec", capacity=10.0)
+    spec.add_component(
+        "battery", "battery", bus_in="elec", bus_out="elec", capacity=10.0
+    )
 
     es, nodes = build_system(spec, {"price": price}, index)
     model, _ = solve(es)
@@ -61,7 +63,9 @@ def test_storage_is_periodically_balanced():
     spec.add_bus("elec")
     spec.add_component("grid", "grid", bus="elec", import_price="@price")
     spec.add_component("demand", "demand", bus="elec", profile=1.0)
-    spec.add_component("battery", "battery", bus="elec", capacity=10.0)
+    spec.add_component(
+        "battery", "battery", bus_in="elec", bus_out="elec", capacity=10.0
+    )
 
     es, nodes = build_system(spec, {"price": two_price_profile(index)}, index)
     model, _ = solve(es)
@@ -79,7 +83,8 @@ def test_thermal_storage_standby_loss():
     spec.add_component("supply", "source", bus="heat", price=0.10)
     spec.add_component("demand", "demand", bus="heat", profile=1.0)
     spec.add_component(
-        "buffer", "thermal_storage", bus="heat", capacity=20.0,
+        "buffer", "thermal_storage", bus_in="heat", bus_out="heat",
+        capacity=20.0,
         standby_loss_kW=0.05, charge_efficiency=1.0, discharge_efficiency=1.0,
     )
 
@@ -258,7 +263,8 @@ def test_zone_and_storage_in_one_solve():
 
     spec = zone_spec(params, heat_cost="@heat_price")
     spec.add_component(
-        "buffer", "thermal_storage", bus="heat", capacity=30.0, standby_loss_kW=0.02
+        "buffer", "thermal_storage", bus_in="heat", bus_out="heat",
+        capacity=30.0, standby_loss_kW=0.02
     )
 
     es, nodes = build_system(spec, inputs, index)
