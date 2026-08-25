@@ -1,12 +1,3 @@
-# -*- coding: utf-8 -*-
-"""
-The component registry and the builder: how a spec becomes a solph model.
-
-This is the executable specification of the extension API - what a factory
-receives, what a custom component has to provide, and what the builder
-refuses to hand back.
-"""
-
 import numpy as np
 import pandas as pd
 import pytest
@@ -32,9 +23,6 @@ def hours(n=24):
     return pd.date_range("2010-01-01", periods=n, freq="h")
 
 
-# --- the registry ------------------------------------------------------
-
-
 def test_registry_covers_the_kit():
     expected = {
         "demand", "source", "grid", "meter", "pv",
@@ -49,8 +37,6 @@ def test_duplicate_factory_is_rejected():
 
 
 def test_a_factory_registers_from_outside_the_package():
-    """The whole extension story for a technology solph already has: one
-    function, and the type is usable in a spec immediately."""
     from esmkit import bus, capacity
 
     @factory("chp")
@@ -78,7 +64,7 @@ def test_a_factory_registers_from_outside_the_package():
         es, nodes = build_system(spec, {}, hours())
         model, _ = solve(es)
         results = node_results(model, nodes)
-        # electricity == fuel * efficiency holds by construction
+
         assert results["chp"]["out_elec"].sum() == pytest.approx(
             results["chp"]["in_gas"].sum() * 0.35
         )
@@ -86,12 +72,7 @@ def test_a_factory_registers_from_outside_the_package():
         COMPONENT_FACTORIES.pop("chp")
 
 
-# --- the custom component bases ---------------------------------------
-
-
 def test_bases_are_complete_or_uninstantiable():
-    """The abstract methods are the half of a custom component that is easy
-    to forget: node without constraint_group, block without _create."""
     class NodeWithoutGroup(EsmComponent):
         pass
 
@@ -111,8 +92,6 @@ def test_bases_are_complete_or_uninstantiable():
 
 
 def test_block_without_constraint_group_is_rejected():
-    """solph would skip such a block in silence, leaving the component with
-    no constraints at all - the builder has to catch it instead."""
     class OrphanBlock(ScalarBlock):
         def _create(self, group=None):
             pass
@@ -137,12 +116,7 @@ def test_block_without_constraint_group_is_rejected():
         COMPONENT_FACTORIES.pop("orphan")
 
 
-# --- the builder -------------------------------------------------------
-
-
 def test_grid_expands_into_two_nodes():
-    """A grid connection with feed-in becomes a Source and a Sink, because
-    solph prices directed edges."""
     spec = SystemSpec()
     spec.add_bus("elec")
     spec.add_component("grid", "grid", bus="elec", import_price=0.3, export_price=0.08)
@@ -164,8 +138,6 @@ def test_grid_without_export_is_one_node():
 
 
 def test_timeindex_covers_every_step():
-    """solph 0.6 defaults to infer_last_interval=False, which would turn
-    N time stamps into N-1 intervals and silently drop the last step."""
     spec = SystemSpec()
     spec.add_bus("elec")
     spec.add_component("grid", "grid", bus="elec", import_price=0.3)
@@ -181,8 +153,6 @@ def test_annuity_factor():
 
 
 def test_investment_scaling_is_resolution_independent():
-    """Annualized capex is scaled by the horizon in *hours*, not in steps:
-    the same wall-clock horizon must cost the same at any resolution."""
     def ep_costs(freq, periods):
         index = pd.date_range("2010-01-01", periods=periods, freq=freq)
         spec = SystemSpec()
@@ -194,20 +164,15 @@ def test_investment_scaling_is_resolution_independent():
         spec.add_component("demand", "demand", bus="elec", profile=1.0)
         _, nodes = build_system(spec, {}, index)
         bus = next(iter(nodes["pv"].outputs))
-        # solph moves an Investment passed as nominal_capacity to .investment
+
         return nodes["pv"].outputs[bus].investment.ep_costs
 
-    hourly = ep_costs("h", 72)          # 72 h
-    quarterly = ep_costs("15min", 288)  # the same 72 h in 15-minute steps
+    hourly = ep_costs("h", 72)
+    quarterly = ep_costs("15min", 288)
     assert hourly[0] == pytest.approx(quarterly[0], rel=1e-12)
 
 
-# --- solving -----------------------------------------------------------
-
-
 def test_bus_balance_and_cost():
-    """A fixed demand supplied by a priced grid: the balance forces the
-    import and the objective is the priced energy."""
     spec = SystemSpec()
     spec.add_bus("elec", carrier="electricity")
     spec.add_component("grid", "grid", bus="elec", import_price=0.30)
@@ -223,7 +188,6 @@ def test_bus_balance_and_cost():
 
 
 def test_meter_is_a_lossless_transfer():
-    """The sub-metering primitive: one flow, two buses, priced once."""
     spec = SystemSpec()
     spec.add_bus("grid_bus")
     spec.add_bus("steuerbar")
@@ -239,7 +203,7 @@ def test_meter_is_a_lossless_transfer():
     results = node_results(model, nodes)
     assert results["meter"]["in_grid_bus"].sum() == pytest.approx(72.0)
     assert results["meter"]["out_steuerbar"].sum() == pytest.approx(72.0)
-    # metered throughput is the base a reduced grid fee is charged on
+
     assert objective_value(model) == pytest.approx(72.0 * 0.10)
 
 
@@ -259,8 +223,6 @@ def test_node_results_shape():
 
 
 def test_a_component_reports_its_own_results():
-    """The hook that keeps `results.py` free of any component type: a node
-    with a `results()` method reports whatever shape it likes."""
     spec = SystemSpec()
     spec.add_bus("elec")
     spec.add_component("grid", "grid", bus="elec", import_price=0.3)

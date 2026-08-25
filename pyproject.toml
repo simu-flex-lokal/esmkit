@@ -2,7 +2,6 @@
 name = "esmkit"
 version = "0.1.0"
 description = "Energy System Model Kit - a component kit for oemof-solph energy systems"
-readme = "README.md"
 license = "MIT"
 authors = [
     { name = "Phillip Schlicht", email = "schlicht@fh-aachen.de" },

@@ -1,21 +1,3 @@
-# -*- coding: utf-8 -*-
-"""
-An energy system with no building in it.
-
-A small district heating scheme: a gas-fired CHP unit serves an electricity
-and a heat demand, backed by a boiler and a priced grid connection. It
-exists to make one point concrete - esmkit is an energy system kit, not a
-building model. Nothing here knows about envelopes, weather or occupants,
-and no component of the kit requires them.
-
-It also doubles as the tutorial from `docs/kit.md` on adding a technology:
-the CHP is registered from *outside* the package in one function, and is
-then usable in a spec exactly like a built-in type.
-
-Run:
-    SOLVER=highs uv run python examples/district_chp.py
-"""
-
 import numpy as np
 import pandas as pd
 from oemof import solph
@@ -32,23 +14,8 @@ from esmkit import (
 )
 
 
-# --- the whole addition -------------------------------------------------
-
-
 @factory("chp")
 def _chp(name, params, buses, inputs, n_steps, step_size_h):
-    """
-    Gas-fired combined heat and power unit.
-
-    Spec parameters
-    ---------------
-    bus_fuel, bus_elec, bus_heat: str, required
-        Bus names.
-    capacity: float, optional
-        Fuel input capacity [kW]. Alternatively capex_per_unit/lifetime/
-        max_capacity for an investment decision.
-    electrical_efficiency, thermal_efficiency: float, optional
-    """
     fuel = bus(buses, params, "bus_fuel", name)
     elec = bus(buses, params, "bus_elec", name)
     heat = bus(buses, params, "bus_heat", name)
@@ -68,14 +35,10 @@ def _chp(name, params, buses, inputs, n_steps, step_size_h):
     ]
 
 
-# --- using it -----------------------------------------------------------
-
-
 def main():
     n = 48
     index = pd.date_range("2010-01-01", periods=n, freq="h")
 
-    # expensive grid electricity in the evening: the CHP should run then
     inputs = {
         "elecPrice": np.where((index.hour >= 17) & (index.hour < 21), 0.45, 0.12),
         "heatDemand": np.full(n, 4.0),
@@ -93,7 +56,6 @@ def main():
     spec.add_component("heat_demand", "demand", bus="heat", profile="@heatDemand")
     spec.add_component("elec_demand", "demand", bus="elec", profile="@elecDemand")
 
-    # the new component, used exactly like any built-in one
     spec.add_component(
         name="chp",
         type="chp",
@@ -122,8 +84,7 @@ def main():
     print("backup boiler heat   : {:8.2f} kWh".format(backup.sum()))
     print("grid import          : {:8.2f} kWh".format(imported.sum()))
     print()
-    # the conversion factors hold by construction - solph derives both
-    # outputs from the single fuel input
+
     print(
         "electricity == fuel * 0.35 : {:.6f} == {:.6f}".format(
             power.sum(), fuel.sum() * 0.35

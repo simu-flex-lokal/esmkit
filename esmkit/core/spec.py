@@ -1,20 +1,3 @@
-# -*- coding: utf-8 -*-
-"""
-Declarative energy system specification and the builder which turns it into
-an oemof-solph EnergySystem.
-
-A `SystemSpec` is deliberately a plain, serializable description of the
-*topology plus scalar parameters* - never of the time series. Profiles are
-referenced by name (`"@elecPrice"`) and resolved against an inputs mapping
-at build time. That boundary is what keeps a spec small enough to store,
-diff and vary across thousands of systems, instead of dragging 8760-element
-arrays through the description.
-
-The inputs mapping is anything dict-like: `Mapping[str, float | Sequence[float]]`.
-The kit never inspects it beyond the keys a spec asks for, which is what
-`required_inputs` and `check_inputs` report.
-"""
-
 import copy
 import json
 
@@ -25,35 +8,17 @@ from oemof import solph
 from .base import assert_constraint_groups
 from .registry import COMPONENT_FACTORIES, build_component
 
-#: Prefix marking a value which is resolved from the inputs mapping.
+
 PROFILE_PREFIX = "@"
 
-#: Schema version written into `to_dict()`; bumped when the spec layout changes.
+
 SPEC_VERSION = "1"
 
 
 class SystemSpec(object):
-    """
-    Topology and scalar parameters of an energy system.
-
-    Parameters
-    ----------
-    buses: dict, required
-        Bus name -> dict, currently only {"carrier": str} which is
-        documentation for the reader; solph buses are carrier agnostic.
-    components: dict, required
-        Component name -> dict with a "type" key naming a factory in
-        `registry.COMPONENT_FACTORIES` plus that factory's parameters.
-        Bus-valued parameters hold bus *names*, profile-valued parameters
-        either a number, a sequence, or a "@key" reference into the inputs
-        mapping.
-    """
-
     def __init__(self, buses=None, components=None):
         self.buses = dict(buses or {})
         self.components = dict(components or {})
-
-    # --- authoring helpers ------------------------------------------
 
     def add_bus(self, name, carrier=None):
         if name in self.buses:
@@ -69,8 +34,6 @@ class SystemSpec(object):
 
     def copy(self):
         return SystemSpec(copy.deepcopy(self.buses), copy.deepcopy(self.components))
-
-    # --- serialization ------------------------------------------------
 
     def to_dict(self):
         return {"version": SPEC_VERSION,
@@ -101,25 +64,12 @@ class SystemSpec(object):
 
 
 def capacity_params(value):
-    """
-    A number becomes a fixed capacity, a dict an investment decision.
-
-    The two forms a capacity parameter may take, in one place, so callers
-    which offer the same choice per component do not each reinvent it.
-    """
     if isinstance(value, dict):
         return dict(value)
     return {"capacity": value}
 
 
 def resolve_profile(value, inputs, n_steps, name=""):
-    """
-    Resolves a spec value into a number or a float array of length n_steps.
-
-    A string starting with "@" is looked up in the inputs mapping; anything
-    else is passed through (scalars stay scalars so solph can broadcast
-    them itself).
-    """
     if isinstance(value, str):
         if not value.startswith(PROFILE_PREFIX):
             raise ValueError(
@@ -149,22 +99,6 @@ def resolve_profile(value, inputs, n_steps, name=""):
 
 
 def required_inputs(spec):
-    """
-    Input keys a spec will look up when it is built.
-
-    Every `"@key"` a component carries is resolved out of the inputs mapping
-    by `resolve_profile`, so this is the complete list of what a caller has
-    to provide - or has to have simulated - before `build_system` can
-    succeed.
-
-    Parameters
-    ----------
-    spec: SystemSpec or dict, required
-
-    Returns
-    -------
-    Sorted list of input keys, without the "@" prefix.
-    """
     if isinstance(spec, dict):
         spec = SystemSpec.from_dict(spec)
 
@@ -177,22 +111,10 @@ def required_inputs(spec):
 
 
 def _is_bus_key(key):
-    """Spec parameter names which hold a bus name: `bus`, `bus_in`, `heat_bus`."""
     return key == "bus" or key.startswith("bus_") or key.endswith("_bus")
 
 
 def validate(spec):
-    """
-    Checks a spec against the registry before anything is built.
-
-    Reports every problem at once rather than failing on the first one, so
-    a hand-written or machine-generated spec can be fixed in one pass.
-
-    Raises
-    ------
-    ValueError listing unknown component types, components without a type,
-    and bus names referenced by a component but never declared.
-    """
     if isinstance(spec, dict):
         spec = SystemSpec.from_dict(spec)
 
@@ -221,18 +143,6 @@ def validate(spec):
 
 
 def check_inputs(spec, inputs, n_steps):
-    """
-    Checks that the inputs mapping satisfies a spec, before building.
-
-    `resolve_profile` would report the same problems, but one at a time and
-    halfway through model construction. This says up front which keys are
-    missing and which have the wrong length.
-
-    Raises
-    ------
-    KeyError if a required key is missing or None.
-    ValueError if a provided series has a length other than `n_steps`.
-    """
     missing = []
     wrong_length = []
     for key in required_inputs(spec):
@@ -258,25 +168,6 @@ def check_inputs(spec, inputs, n_steps):
 
 
 def build_system(spec, inputs, timeindex):
-    """
-    Builds a solph EnergySystem from a spec and an inputs mapping.
-
-    Parameters
-    ----------
-    spec: SystemSpec or dict, required
-    inputs: Mapping, required
-        Source of every `"@key"` profile reference. Values are floats or
-        sequences of length `len(timeindex)`.
-    timeindex: pandas.DatetimeIndex, required
-        The model horizon. Explicit rather than derived, because the kit
-        has no opinion on where a caller keeps its time axis.
-
-    Returns
-    -------
-    (solph.EnergySystem, dict) - the system and a mapping of component name
-    to the created solph node(s); components which expand into several nodes
-    (a grid connection becomes a Source and a Sink) map to a list.
-    """
     if isinstance(spec, dict):
         spec = SystemSpec.from_dict(spec)
 
@@ -284,13 +175,8 @@ def build_system(spec, inputs, timeindex):
     validate(spec)
     check_inputs(spec, inputs, n_steps)
 
-    # infer_last_interval=True is required: solph 0.6 defaults to False,
-    # which would turn 8760 time stamps into 8759 intervals and silently
-    # drop the last hour of the year.
     es = solph.EnergySystem(timeindex=timeindex, infer_last_interval=True)
 
-    # step size in hours; investment costing is scaled by the horizon in
-    # hours rather than in steps, so it stays correct below hourly resolution
     step_size_h = float(es.timeincrement[0])
 
     buses = {}

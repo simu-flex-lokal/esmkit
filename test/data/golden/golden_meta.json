@@ -9,7 +9,6 @@
   "generated_from_commit": "5069d3db962e352da596e402e552a8ca39c00eed",
   "n_steps_short": 168,
   "n_steps_year": 8760,
-  "note": "Inputs are pinned alongside the outputs so the parity test does not depend on the stochastic tsorb occupancy simulation.",
   "solver": "highs",
   "stack": "tsib.energysystem (pre-migration)",
   "weather": "TRY_4"

@@ -1,9 +1,3 @@
-# -*- coding: utf-8 -*-
-"""
-Solver handling for the energy system MILP: option management per solver
-and auto-detection of an available solver.
-"""
-
 import logging
 import os
 
@@ -13,34 +7,18 @@ from pyomo.contrib.appsi.base import TerminationCondition
 
 
 def manageSolverOpts(solver, solverOpts):
-    """
-    Adds solver specific options.
-
-    Parameters
-    ----------
-    solver: str, required
-        Solver name used by pyomo
-    solverOpts: dict, required
-        Other solveroptions
-
-    Returns
-    -------
-    solverOpts: dict
-    """
-
     defaultOpts = {}
 
     defaultOpts_gurobi = {
         "Threads": 3,
         "OptimalityTol": 1e-8,
-        "Method": 2,  # interior point/barrier
-        "Crossover": 0,  # skip crossover: it's numerically unstable on this model
-        "Cuts": 0,  # no precut of solution spce
-        "NodeMethod": 2,  # interior points
-        "IntFeasTol": 1e-9,  # small values in order to avoid errors with BigM
+        "Method": 2,
+        "Crossover": 0,
+        "Cuts": 0,
+        "NodeMethod": 2,
+        "IntFeasTol": 1e-9,
     }
 
-    # note: scip needs a param file, which is located in the dir of he model - so, no direct options can be given
     defaultOpts_scip = {}
 
     defaultOpts_cbc = {"primalT": 1e-3}
@@ -49,17 +27,15 @@ def manageSolverOpts(solver, solverOpts):
 
     defaultOpts_cplex = {
         "threads": 3,
-        "lp_method": 4,  # -> "lp method 4": force barrier
-        "barrier_crossover_algorithm": -1,  # -> "barrier crossover algorithm -1": skip crossover, same numerical-stability fix as gurobi/highs
+        "lp_method": 4,
+        "barrier_crossover_algorithm": -1,
     }
 
     defaultOpts_highs = {}
 
-    # append default options
     if solver == "gurobi":
         defaultOpts.update(defaultOpts_gurobi)
     elif solver == "scip":
-        # note: scip needs a param file, which is located in the dir of he model - so, no direct options can be given
         defaultOpts.update(defaultOpts_scip)
     elif solver == "cplex":
         defaultOpts.update(defaultOpts_cplex)
@@ -72,16 +48,12 @@ def manageSolverOpts(solver, solverOpts):
         if "LogFile" in solverOpts:
             solverOpts.pop("LogFile")
     elif solver == "highs":
-        # highs is solved separately via appsi.solvers.Highs(); these
-        # options end up unused, but the solver name still needs to
-        # pass validation here
         defaultOpts.update(defaultOpts_highs)
     else:
         raise ValueError(
             'Solver name unknown. Please use one of "gurobi", "scip", "cbc", "glpk", "cplex" or "highs".'
         )
 
-    # just add default options if not defined in solverOpts
     for option in defaultOpts:
         if not option in solverOpts:
             solverOpts[option] = defaultOpts[option]
@@ -90,15 +62,6 @@ def manageSolverOpts(solver, solverOpts):
 
 
 def detect_solver():
-    """
-    Determines the MILP solver to use: first the $SOLVER environment
-    variable, otherwise the first available solver in performance
-    priorization, with HiGHS last as the free, open-source fallback.
-
-    Returns
-    -------
-    solver name as str
-    """
     try:
         return os.environ["SOLVER"]
     except KeyError:
@@ -117,22 +80,13 @@ def detect_solver():
     )
 
 
-#: base HiGHS settings for models carrying free state variables: the
-#: interior point method without crossover, on an unscaled problem
 HIGHS_OPTIONS = {
     "solver": "ipm",
     "simplex_scale_strategy": "off",
     "run_crossover": "off",
 }
 
-#: settings tried in order until one terminates optimal, each merged into
-#: HIGHS_OPTIONS. A component with free state variables - the 5R1C thermal
-#: zone is the kit's example - gives the LP primal values wide enough that
-#: HiGHS breaks on some inputs: IPX in its
-#: basis construction, simplex and crossover in postsolve ("excessive primal
-#: values"). Which inputs those are is not predictable, and the breakdown is
-#: not even reproducible for a fixed one, so the fallbacks buy robustness
-#: with runtime instead of touching the model formulation.
+
 HIGHS_FALLBACKS = (
     {},
     {"simplex_scale_strategy": "choose"},
@@ -142,23 +96,6 @@ HIGHS_FALLBACKS = (
 
 
 def solve_highs(pyomo_model, tee=False, solverOpts=None):
-    """
-    Solves a pyomo model with HiGHS, retrying with more robust settings while
-    HiGHS reports anything but an optimal solution.
-
-    Parameters
-    ----------
-    pyomo_model: pyomo.ConcreteModel, required
-    tee: bool, optional (default: False)
-        Stream the solver log.
-    solverOpts: dict, optional
-        HiGHS options overriding `HIGHS_OPTIONS`. Given explicitly, they are
-        taken as deliberate and used without the fallbacks.
-
-    Returns
-    -------
-    The appsi results object, with the solution loaded into the model.
-    """
     if solverOpts:
         attempts = [dict(HIGHS_OPTIONS, **solverOpts)]
     else:
@@ -191,22 +128,6 @@ def solve_highs(pyomo_model, tee=False, solverOpts=None):
 
 
 def solve_model(pyomo_model, solver=None, tee=False, solverOpts=None):
-    """
-    Solves a pyomo model with the given or an auto-detected solver.
-
-    Parameters
-    ----------
-    pyomo_model: pyomo.ConcreteModel, required
-    solver: str, optional (default: $SOLVER or auto-detected)
-    tee: bool, optional (default: False)
-        Stream the solver log.
-    solverOpts: dict, optional
-        Additional solver options.
-
-    Returns
-    -------
-    The solver results object.
-    """
     if solver is None:
         solver = detect_solver()
 
@@ -219,8 +140,6 @@ def solve_model(pyomo_model, solver=None, tee=False, solverOpts=None):
     opts = manageSolverOpts(solver, dict(solverOpts) if solverOpts else {"Threads": 1, "LogFile": ""})
 
     if solver == "highs":
-        # only explicitly passed options reach HiGHS (the generic
-        # Threads/LogFile defaults are not valid HiGHS options)
         results = solve_highs(pyomo_model, tee=tee, solverOpts=solverOpts)
     else:
         optprob = opt.SolverFactory(solver)

@@ -1,16 +1,3 @@
-# -*- coding: utf-8 -*-
-"""
-The 5R1C thermal zone as an oemof-solph component.
-
-Parity against the golden fixtures captured from tsib's pre-migration
-`tsib.energysystem` stack. Those fixtures are the acceptance test of the
-whole extraction: the zone here takes explicit parameters instead of a
-building configuration, and must still reproduce the same trajectory.
-
-The parameters and the inputs are pinned alongside the expected results, so
-these tests depend on neither tsib nor its stochastic occupancy model.
-"""
-
 import json
 
 import numpy as np
@@ -31,12 +18,7 @@ def _solve_zone(n_steps=None, **zone_kwargs):
     return model, nodes, node_results(model, nodes, index=index)
 
 
-# --- migration parity ------------------------------------------------
-
-
 def test_parity_short_horizon():
-    """Every state and flow of the 168 h horizon reproduces the
-    pre-migration model, not just the aggregates."""
     _, _, results = _solve_zone(n_steps=168)
 
     expected = pd.read_csv(golden("zone_168h.csv"), index_col=0)
@@ -49,13 +31,6 @@ def test_parity_short_horizon():
 
 
 def test_parity_full_year_aggregates():
-    """Annual and monthly heat demand reproduce the pre-migration model.
-
-    Per-time-step equality is deliberately not asserted here: with the
-    comfort band open, at a constant heat price the T_m trajectory is
-    degenerate and a different solver path may pick another optimum of equal
-    cost. The aggregates are what the results are used for.
-    """
     _, _, results = _solve_zone()
     expected = json.load(open(golden("zone_year_aggregates.json")))
     zone = results["thermalzone"]
@@ -75,8 +50,6 @@ def test_parity_full_year_aggregates():
 
 
 def test_parity_full_year_series():
-    """The full-year heating load series itself, at the 6 significant
-    digits the golden fixture stores."""
     _, _, results = _solve_zone()
 
     expected = pd.read_csv(golden("zone_year.csv.gz"), index_col=0)["Heating Load"]
@@ -87,12 +60,7 @@ def test_parity_full_year_series():
     assert deviation.max() < 1e-3, "max deviation {:.2e} kW".format(deviation.max())
 
 
-# --- structure -------------------------------------------------------
-
-
 def test_zone_is_an_lp():
-    """The zone creates no binary variables: the heat load simulation
-    stays a pure LP."""
     model, _, _ = _solve_zone(n_steps=168)
 
     for var in model.component_data_objects(po.Var):
@@ -100,7 +68,6 @@ def test_zone_is_an_lp():
 
 
 def test_comfort_band_respected():
-    """The comfort band bounds the air temperature in both directions."""
     params, inputs, _ = zone_fixture(n_steps=168)
     _, _, results = _solve_zone(n_steps=168)
     T_air = results["thermalzone"]["timeseries"]["T_air"]
@@ -110,8 +77,6 @@ def test_comfort_band_respected():
 
 
 def test_heat_flows_through_the_bus():
-    """The zone's heating is the solph edge from the heat bus, so the bus
-    balance ties it to whatever supplies it."""
     model, nodes, results = _solve_zone(n_steps=48)
 
     zone = nodes["thermalzone"]
@@ -126,8 +91,6 @@ def test_heat_flows_through_the_bus():
 
 
 def test_objective_is_energy_cost():
-    """With no load violation the objective is exactly the priced energy
-    of the two supply sources."""
     model, _, results = _solve_zone(n_steps=168)
     zone = results["thermalzone"]
 
@@ -139,13 +102,7 @@ def test_objective_is_energy_cost():
     assert objective_value(model) == pytest.approx(expected, rel=1e-6)
 
 
-# --- the explicit parameter contract ---------------------------------
-
-
 def test_series_length_must_match_the_time_index():
-    """A zone whose series are shorter than the model horizon is rejected
-    before the solver sees it, not silently truncated - and every offending
-    key is named at once."""
     params, inputs, index = zone_fixture(n_steps=168)
     short = {key: values[:100] for key, values in inputs.items()}
 
@@ -156,7 +113,6 @@ def test_series_length_must_match_the_time_index():
 
 
 def test_series_must_agree_with_each_other():
-    """Inconsistent series lengths are caught in the component itself."""
     from esmkit import ThermalZone5R1C
     from oemof import solph
 
@@ -171,7 +127,6 @@ def test_series_must_agree_with_each_other():
 
 
 def test_design_capacity_defaults_to_max_load():
-    """A zone reports its max_load as capacity unless told otherwise."""
     from esmkit import ThermalZone5R1C
     from oemof import solph
 

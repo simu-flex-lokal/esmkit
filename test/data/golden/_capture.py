@@ -1,25 +1,3 @@
-# -*- coding: utf-8 -*-
-"""
-Captures the 5R1C parity fixture from tsib.
-
-esmkit's zone takes explicit parameters, while tsib's golden fixtures were
-produced from a full building configuration. This script bridges the two
-exactly once: it builds tsib's reference building, lets tsib's own code
-derive the zone parameters, and freezes them here. esmkit's test suite then
-reproduces the golden results without importing tsib at all - the
-dependency runs one way, and it does not run at test time.
-
-The parameters are read off tsib's own `ThermalZone5R1C` rather than
-recomputed, so the fixture cannot drift from the model it is meant to pin.
-This script is therefore also the prototype of the `zone_parameters(cfg)`
-function tsib needs when it is cut over to esmkit.
-
-Run from a checkout of tsib, whose environment has the building data:
-
-    cd ../tsib
-    SOLVER=highs uv run python ../esmkit/test/data/golden/_capture.py
-"""
-
 import json
 import os
 import shutil
@@ -33,13 +11,12 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 TSIB = os.path.abspath(os.path.join(HERE, "..", "..", "..", "..", "tsib"))
 sys.path.insert(0, os.path.join(TSIB, "test"))
 
-from conftest import golden_zone_cfg  # noqa: E402
+from conftest import golden_zone_cfg
 
-from tsib.optimization import ThermalZone5R1C  # noqa: E402
-from tsib.optimization.zone5r1c import ENVELOPE_ELEMENTS  # noqa: E402
+from tsib.optimization import ThermalZone5R1C
+from tsib.optimization.zone5r1c import ENVELOPE_ELEMENTS
 
-#: result files copied over unchanged - these are the expectations, and they
-#: are tsib's to define
+
 EXPECTED_FILES = [
     "golden_meta.json",
     "zone_168h.csv",
@@ -51,22 +28,12 @@ SERIES = ["T_e", "gain_mass", "gain_surface", "comfort_lb", "comfort_ub"]
 
 
 def zone_parameters(cfg):
-    """
-    Derives esmkit's zone parameters from a resolved tsib building cfg.
-
-    Everything here runs inside tsib: the envelope coefficients, the
-    irradiance on tilted surfaces, the distribution of internal and solar
-    gains over the nodes, and the comfort control logic. What comes out is
-    ten numbers and five arrays, none of which mentions a building.
-    """
     from oemof import solph
 
     from tsib.optimization.zone5r1c import comfort_bounds
 
     n = len(cfg["weather"].index)
 
-    # a throwaway zone, used only as tsib's own calculator for the gains;
-    # the bus is a formality, nothing is built or solved here
     zone = ThermalZone5R1C("capture", cfg, heat_bus=solph.Bus(label="heat"))
     zone.prepare(n)
 
@@ -104,10 +71,7 @@ def _write(horizon, n_steps, compress):
     index = cfg["weather"].index
     frame = pd.DataFrame(
         {key: captured["series"][key] for key in SERIES},
-        # written in UTC: a year of Europe/Berlin stamps carries two offsets,
-        # which no longer round-trips through a CSV. The reader converts back
-        # to the zone recorded in capture_meta.json, so month boundaries -
-        # which the monthly parity assertions depend on - stay local.
+
         index=index.tz_convert("UTC"),
     )
     name = "zone_inputs_{}.csv{}".format(horizon, ".gz" if compress else "")
@@ -137,13 +101,6 @@ def main():
         "n_steps_short": len(cfg_short["weather"].index),
         "n_steps_year": len(cfg_year["weather"].index),
         "timezone": str(cfg_year["weather"].index.tz),
-        "note": (
-            "Zone parameters derived by tsib's own ThermalZone5R1C, so the "
-            "fixture cannot drift from the model it pins. The expected "
-            "results are copied unchanged from tsib's golden fixtures. "
-            "Input time stamps are UTC; convert to 'timezone' to recover the "
-            "local index the results were produced on."
-        ),
     }
     with open(os.path.join(HERE, "capture_meta.json"), "w") as handle:
         json.dump(meta, handle, indent=2, sort_keys=True)

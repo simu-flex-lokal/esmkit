@@ -1,12 +1,3 @@
-# -*- coding: utf-8 -*-
-"""
-The spec: what a system description is, how profile references resolve, and
-what is checked before anything is built.
-
-Deliberately without a thermal zone, so these stay fast and isolate the
-description from any physics.
-"""
-
 import numpy as np
 import pandas as pd
 import pytest
@@ -35,19 +26,13 @@ def hours(n=24):
     return pd.date_range("2010-01-01", periods=n, freq="h")
 
 
-# --- the spec is data -------------------------------------------------
-
-
 def test_spec_round_trip():
-    """A spec is plain data: it survives a JSON round trip unchanged."""
     spec = elec_spec(profile="@elecLoad")
     restored = SystemSpec.from_json(spec.to_json())
     assert restored.to_dict() == spec.to_dict()
 
 
 def test_spec_carries_its_schema_version():
-    """The exchange format is versioned, so a reader can refuse a layout it
-    does not know instead of misinterpreting it."""
     assert SystemSpec().to_dict()["version"] == SPEC_VERSION
 
     with pytest.raises(ValueError, match="version '99'"):
@@ -72,14 +57,10 @@ def test_spec_copy_is_deep():
 
 
 def test_capacity_params_offers_two_forms():
-    """A number is a fixed capacity, a dict an investment decision."""
     assert capacity_params(8.0) == {"capacity": 8.0}
     invest = {"capex_per_unit": 1200.0, "lifetime": 25.0}
     assert capacity_params(invest) == invest
     assert capacity_params(invest) is not invest
-
-
-# --- profile resolution ------------------------------------------------
 
 
 def test_profile_reference_resolution():
@@ -90,7 +71,6 @@ def test_profile_reference_resolution():
 
 
 def test_scalars_pass_through():
-    """Scalars stay scalars so solph broadcasts them itself."""
     assert resolve_profile(0.35, {}, 24, "test") == 0.35
 
 
@@ -105,7 +85,6 @@ def test_profile_errors_are_specific():
 
 
 def test_required_inputs_is_the_contract():
-    """What a spec will look up, inspectable before anything is built."""
     spec = SystemSpec()
     spec.add_bus("elec")
     spec.add_component("grid", "grid", bus="elec", import_price="@price")
@@ -116,12 +95,7 @@ def test_required_inputs_is_the_contract():
     assert required_inputs(SystemSpec()) == []
 
 
-# --- validation before building ---------------------------------------
-
-
 def test_validate_reports_every_problem_at_once():
-    """A generated spec should be fixable in one pass, not one error at a
-    time."""
     spec = SystemSpec()
     spec.add_bus("elec")
     spec.add_component("thing", "wind_turbine", bus="elec")
@@ -135,8 +109,6 @@ def test_validate_reports_every_problem_at_once():
 
 
 def test_validate_finds_suffixed_bus_parameters():
-    """Bus parameters are named `bus`, `bus_in` or `heat_bus` - all three
-    have to be checked, or a zone's typo slips through."""
     spec = SystemSpec()
     spec.add_bus("heat")
     spec.add_component("hp", "heat_pump", bus_in="elec", bus_out="heat", cop=3.0)
@@ -162,8 +134,6 @@ def test_missing_bus_parameter_is_rejected():
 
 
 def test_check_inputs_names_what_is_missing():
-    """Reported up front rather than as a KeyError halfway through the
-    build."""
     spec = elec_spec(profile="@load")
 
     with pytest.raises(KeyError, match="load"):
