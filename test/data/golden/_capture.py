@@ -1,3 +1,29 @@
+"""Re-capture the golden fixture that pins the 5R1C zone to its origin.
+
+The zone in this kit is a port: the same physics used to live inside ``tsib``
+(``tsib.optimization.zone5r1c``), built there from a full building
+configuration. To prove the port did not change any number, the inputs and the
+expected results of one concrete building were frozen and are replayed by
+``test/test_zone.py``.
+
+The building is the EPISCOPE single-family archetype
+``DE.N.SFH.06.Gen.ReEx.001.001`` (173.25 m2 reference area, comfort band
+20-26 degC) under DWD test reference year weather region TRY_4, on a 168 h and
+a full 8760 h horizon, solved with HiGHS. Provenance of the two halves is
+recorded in ``capture_meta.json`` (this side: the tsib commit the inputs were
+read from) and ``golden_meta.json`` (the other side: the pre-migration
+``tsib.energysystem`` stack the expected results came from).
+
+This script writes the input half - it instantiates the old ``tsib`` zone,
+reads its resolved scalars and node-gain series back out, and stores them as
+``zone_params_*.json`` and ``zone_inputs_*.csv`` - then copies the expected
+results across unchanged. It therefore only runs in a checkout that has
+``tsib`` as a sibling directory, and is not part of the test suite: the
+fixture is deliberately static, and re-running this is a decision to re-pin
+parity to a new tsib commit.
+"""
+
+
 import json
 import os
 import shutil

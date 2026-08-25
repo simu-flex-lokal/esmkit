@@ -1,3 +1,7 @@
+"""The SystemSpec contract: serialisation and versioning, "@key" input
+references, and the validation that runs before anything is built."""
+
+
 import numpy as np
 import pandas as pd
 import pytest

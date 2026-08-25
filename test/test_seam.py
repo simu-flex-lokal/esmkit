@@ -1,3 +1,7 @@
+"""The dependency direction: esmkit.core must never import a component, and
+the core alone must still build and solve a system."""
+
+
 import ast
 import os
 

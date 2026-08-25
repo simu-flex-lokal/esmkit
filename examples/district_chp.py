@@ -1,3 +1,18 @@
+"""A third-party component: a CHP unit registered from outside the library.
+
+Nothing in ``esmkit`` knows about combined heat and power. This script defines
+a ``chp`` component in user code, registers it with ``@factory("chp")`` and then
+uses it in a spec exactly like a built-in type - no fork, no patch, no import
+of anything private. That is the extension point: a factory is a plain function
+returning solph nodes, and the registry is global.
+
+The system is a small district: a gas grid, an electricity grid with a
+time-varying import price, a backup boiler, a heat and an electricity demand,
+and the CHP tying gas, power and heat together. Run it with
+``SOLVER=highs uv run python examples/district_chp.py``.
+"""
+
+
 import numpy as np
 import pandas as pd
 from oemof import solph
@@ -16,6 +31,12 @@ from esmkit import (
 
 @factory("chp")
 def _chp(name, params, buses, inputs, n_steps, step_size_h):
+    """Build a gas-fired CHP unit: one converter, fuel in, power and heat out.
+
+    Parameters: ``bus_fuel``, ``bus_elec``, ``bus_heat``, a fixed ``capacity``
+    (or the ``capex_per_unit``/``lifetime`` investment keys plus ``wacc``), and
+    the ``electrical_efficiency`` / ``thermal_efficiency`` of the unit.
+    """
     fuel = bus(buses, params, "bus_fuel", name)
     elec = bus(buses, params, "bus_elec", name)
     heat = bus(buses, params, "bus_heat", name)

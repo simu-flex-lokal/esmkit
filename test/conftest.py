@@ -1,3 +1,7 @@
+"""Shared fixtures: paths into the golden data set, the captured 5R1C zone
+parameters, and the small spec every zone test is built on."""
+
+
 import json
 import os
 
@@ -17,10 +21,12 @@ ZONE_SERIES = ["T_e", "gain_mass", "gain_surface", "comfort_lb", "comfort_ub"]
 
 
 def golden(filename):
+    """Return the absolute path of a file in the golden data directory."""
     return os.path.join(GOLDEN_DIR, filename)
 
 
 def capture_meta():
+    """Return the provenance metadata written by ``data/golden/_capture.py``."""
     with open(golden("capture_meta.json")) as handle:
         return json.load(handle)
 
@@ -30,6 +36,14 @@ def _timezone():
 
 
 def zone_fixture(n_steps=None):
+    """Load the captured zone parameters, input series and time index.
+
+    ``n_steps=168`` uses the short fixture, anything else the full year; a
+    smaller ``n_steps`` truncates the year to that many leading steps.
+
+    Returns:
+        ``(params, inputs, index)`` ready to hand to ``build_system``.
+    """
     horizon = "168h" if n_steps == 168 else "year"
     source = "zone_inputs_168h.csv" if horizon == "168h" else "zone_inputs_year.csv.gz"
 
@@ -51,6 +65,12 @@ def zone_fixture(n_steps=None):
 
 
 def zone_spec(params, heat_cost=HEAT_COST, cool_cost=COOL_COST, **zone_kwargs):
+    """Build the minimal spec around one zone: a heat and a cool supply.
+
+    Both supplies are priced sources, so the objective is pure energy cost and
+    the zone alone decides when to draw heat. ``zone_kwargs`` override the
+    captured parameters.
+    """
     values = dict(params)
     values.update(zone_kwargs)
 
@@ -71,6 +91,7 @@ def zone_spec(params, heat_cost=HEAT_COST, cool_cost=COOL_COST, **zone_kwargs):
 
 
 def flat_inputs(n, **series):
+    """Expand scalars into constant ``n``-step arrays, passing arrays through."""
     return {
         key: np.full(n, value) if np.isscalar(value) else np.asarray(value, dtype=float)
         for key, value in series.items()

@@ -1,3 +1,6 @@
+"""The serialisable system description: buses, components and their scalars,
+plus the builder that turns one into an oemof-solph energy system."""
+
 import copy
 import json
 
@@ -9,39 +12,53 @@ from .base import assert_constraint_groups
 from .registry import COMPONENT_FACTORIES, build_component
 
 
+# Marks a parameter as a reference into the ``inputs`` mapping ("@price").
 PROFILE_PREFIX = "@"
 
 
+# Bumped whenever the serialised layout changes; from_dict refuses others.
 SPEC_VERSION = "1"
 
 
 class SystemSpec(object):
+    """Topology and scalar parameters of an energy system.
+
+    Holds no time series: a parameter that varies over time is stored as a
+    ``"@key"`` string resolved against the ``inputs`` mapping at build time.
+    That is what keeps a spec JSON-serialisable and exchangeable.
+    """
+
     def __init__(self, buses=None, components=None):
         self.buses = dict(buses or {})
         self.components = dict(components or {})
 
     def add_bus(self, name, carrier=None):
+        """Declare a bus and return its name."""
         if name in self.buses:
             raise ValueError("Duplicate bus '{}'".format(name))
         self.buses[name] = {"carrier": carrier}
         return name
 
     def add_component(self, name, type, **params):
+        """Declare a component of the given registered type and return its name."""
         if name in self.components:
             raise ValueError("Duplicate component '{}'".format(name))
         self.components[name] = dict(params, type=type)
         return name
 
     def copy(self):
+        """Return an independent deep copy of this spec."""
         return SystemSpec(copy.deepcopy(self.buses), copy.deepcopy(self.components))
 
     def to_dict(self):
+        """Return the spec as a plain, JSON-ready dict."""
         return {"version": SPEC_VERSION,
                 "buses": copy.deepcopy(self.buses),
                 "components": copy.deepcopy(self.components)}
 
     @classmethod
     def from_dict(cls, data):
+        """Rebuild a spec from a dict, rejecting an unreadable spec version."""
         version = data.get("version", SPEC_VERSION)
         if str(version) != SPEC_VERSION:
             raise ValueError(
@@ -51,10 +68,12 @@ class SystemSpec(object):
         return cls(buses=data.get("buses"), components=data.get("components"))
 
     def to_json(self, **kwargs):
+        """Serialise the spec to JSON; keyword arguments go to ``json.dumps``."""
         return json.dumps(self.to_dict(), sort_keys=True, **kwargs)
 
     @classmethod
     def from_json(cls, text):
+        """Rebuild a spec from its JSON representation."""
         return cls.from_dict(json.loads(text))
 
     def __repr__(self):
@@ -64,12 +83,25 @@ class SystemSpec(object):
 
 
 def capacity_params(value):
+    """Normalise a capacity given as a scalar or as a dict into a params dict."""
     if isinstance(value, dict):
         return dict(value)
     return {"capacity": value}
 
 
 def resolve_profile(value, inputs, n_steps, name=""):
+    """Resolve a parameter into a float array, or pass a scalar through.
+
+    Args:
+        value: a ``"@key"`` reference, an array-like, or a plain scalar.
+        inputs: mapping the reference is looked up in.
+        n_steps: length every resolved series must have.
+        name: label used in error messages.
+
+    Returns:
+        A 1-D numpy array for series-valued parameters, the value itself for
+        scalars.
+    """
     if isinstance(value, str):
         if not value.startswith(PROFILE_PREFIX):
             raise ValueError(
@@ -99,6 +131,7 @@ def resolve_profile(value, inputs, n_steps, name=""):
 
 
 def required_inputs(spec):
+    """Return the sorted input keys the spec references via ``"@key"``."""
     if isinstance(spec, dict):
         spec = SystemSpec.from_dict(spec)
 
@@ -111,10 +144,16 @@ def required_inputs(spec):
 
 
 def _is_bus_key(key):
+    """Report whether a parameter name is a bus reference by convention.
+
+    A parameter refers to a bus if it is called ``bus``, starts with ``bus_``
+    or ends with ``_bus``; there is no other declaration of bus-ness.
+    """
     return key == "bus" or key.startswith("bus_") or key.endswith("_bus")
 
 
 def validate(spec):
+    """Check component types and bus references, and return the spec object."""
     if isinstance(spec, dict):
         spec = SystemSpec.from_dict(spec)
 
@@ -143,6 +182,7 @@ def validate(spec):
 
 
 def check_inputs(spec, inputs, n_steps):
+    """Raise if a referenced input is missing or has the wrong number of steps."""
     missing = []
     wrong_length = []
     for key in required_inputs(spec):
@@ -168,6 +208,20 @@ def check_inputs(spec, inputs, n_steps):
 
 
 def build_system(spec, inputs, timeindex):
+    """Turn a spec plus its input time series into a solph energy system.
+
+    Runs validate -> check_inputs -> create buses -> build components ->
+    assert_constraint_groups.
+
+    Args:
+        spec: a ``SystemSpec`` or its dict form.
+        inputs: mapping of input key to time series, for ``"@key"`` references.
+        timeindex: pandas ``DatetimeIndex`` of the horizon.
+
+    Returns:
+        ``(es, nodes)`` - the ``solph.EnergySystem`` and a mapping of component
+        name to the node it created (a list where it created several).
+    """
     if isinstance(spec, dict):
         spec = SystemSpec.from_dict(spec)
 
@@ -175,6 +229,8 @@ def build_system(spec, inputs, timeindex):
     validate(spec)
     check_inputs(spec, inputs, n_steps)
 
+    # infer_last_interval=True lets solph close the horizon from the index
+    # spacing, so len(timeindex) steps are modelled rather than len - 1.
     es = solph.EnergySystem(timeindex=timeindex, infer_last_interval=True)
 
     step_size_h = float(es.timeincrement[0])

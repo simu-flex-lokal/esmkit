@@ -1,3 +1,10 @@
+"""esmkit - a component kit for building oemof-solph energy system models.
+
+Describe the system as a ``SystemSpec`` (buses, components, scalars),
+turn it into an energy system with ``build_system(spec, inputs, timeindex)``,
+then ``solve()`` it and read the flows back with ``node_results()``.
+"""
+
 from . import components
 from .components import ThermalZone5R1C, ThermalZone5R1CBlock
 from .core.base import EsmBlock, EsmComponent, assert_constraint_groups

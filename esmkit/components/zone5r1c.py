@@ -1,3 +1,6 @@
+"""The 5R1C reduced-order thermal zone: one custom solph node plus the
+pyomo block that carries its energy balances."""
+
 import warnings
 
 import numpy as np
@@ -13,6 +16,9 @@ from ..core.registry import factory
 ENVELOPE_ELEMENTS = ["Walls", "Roof", "Floor", "Windows", "Ventilation"]
 
 
+# The opaque elements are the ones lumped into the single equivalent
+# mass-to-environment conductance; windows and ventilation are handled
+# separately - see docs/model-deviations.md for where they end up.
 MASS_ELEMENTS = ["Walls", "Roof", "Floor"]
 
 
@@ -20,6 +26,32 @@ SERIES_PARAMETERS = ["T_e", "gain_mass", "gain_surface", "comfort_lb", "comfort_
 
 
 class ThermalZone5R1C(EsmComponent):
+    """A 5R1C reduced-order thermal zone after DIN EN ISO 13790.
+
+    The formulation follows Schuetz et al. 2017 ("Optimal design of energy
+    conversion units and envelopes for residential building retrofits using
+    a comprehensive MILP model", Applied Energy 185, Eqs. 20-22) with the
+    comfort band of Kotzur 2018 (dissertation, Sec. 3.2.2, Eqs. 3.1-3.2).
+    Several node balances deviate from both on purpose; they are listed in
+    docs/model-deviations.md and are load-bearing for the golden fixtures.
+
+    Three temperatures are free variables over the whole horizon: ``T_m``
+    (the thermal mass, the one node carrying a capacitance ``C_m``), ``T_s``
+    (the inner surface) and ``T_air`` (the indoor air). ``H_ms`` couples
+    mass to surface, ``H_is`` surface to air, ``H_door`` and the per-element
+    conductances in ``H`` (Walls, Roof, Floor, Windows, Ventilation) couple
+    the zone to the outside.
+
+    The zone has no port mechanism: its heat supply is read straight off
+    ``m.flow[heat_bus, zone, t]``, the edge solph itself creates for the
+    input flow, so the zone is wired like any other node in the system.
+
+    Because the temperatures may float anywhere inside the comfort band,
+    the thermal mass is a dispatchable flexibility resource inside the same
+    LP as the storage, the PV and the prices: the model may pre-heat into
+    cheap hours and coast through expensive ones.
+    """
+
     def __init__(
         self,
         label,
@@ -40,6 +72,31 @@ class ThermalZone5R1C(EsmComponent):
         initial_T_m=None,
         design_capacity=None,
     ):
+        """Build the zone and check that all its time series agree in length.
+
+        Args:
+            label: node label, unique within the energy system.
+            heat_bus: bus the zone draws its heating from.
+            H_ms: mass-to-surface conductance, kW/K.
+            H_is: surface-to-air conductance, kW/K.
+            H_door: door transmission conductance, kW/K.
+            C_m: heat capacity of the thermal mass, kWh/K.
+            H: per-element envelope conductances in kW/K, with one entry
+                for each of Walls, Roof, Floor, Windows and Ventilation.
+            T_e: ambient air temperature per time step, degC.
+            gain_mass: solar and internal gains onto the mass node, kW.
+            gain_surface: solar and internal gains onto the surface node, kW.
+            comfort_lb: lower bound of the indoor air temperature, degC.
+            comfort_ub: upper bound of the indoor air temperature, degC.
+            max_load: heating and cooling power the supply can deliver, kW.
+            cool_bus: optional bus supplying cooling. Without one, cooling
+                is an internal variable that costs nothing.
+            max_load_violation_penalty: price of the slack, EUR per kW.
+            initial_T_m: mass temperature at the first step, degC. Given, it
+                replaces the cyclic closure of the mass balance.
+            design_capacity: capacity reported in the results, kW. Defaults
+                to ``max_load``.
+        """
         inputs = {heat_bus: Flow()}
         if cool_bus is not None:
             inputs[cool_bus] = Flow()
@@ -86,9 +143,27 @@ class ThermalZone5R1C(EsmComponent):
         self.n_steps = lengths.pop()
 
     def constraint_group(self):
+        """Return the block class that constrains this zone."""
         return ThermalZone5R1CBlock
 
     def results(self, model, index=None):
+        """Read the solved zone out of the model.
+
+        Warns with a ``UserWarning`` if the max-load slack came out
+        non-zero, since the supply then had to be oversized to stay
+        feasible.
+
+        Args:
+            model: the solved solph model.
+            index: time index for the returned frame.
+
+        Returns:
+            A dict with ``"timeseries"`` (heating and cooling load in kW
+            plus the four temperatures in degC), ``"static"`` (the reported
+            capacity and the zero cost entries, so the zone lines up with
+            the other components) and ``"max_load_violation"`` (kW by which
+            ``max_load`` had to be exceeded, 0 when it held).
+        """
         block = model.ThermalZone5R1CBlock
         steps = list(model.TIMESTEPS)
 
@@ -135,6 +210,7 @@ class ThermalZone5R1C(EsmComponent):
 
 
 def _as_array(value, name):
+    """Coerce a time series parameter into a 1-D float array."""
     if value is None:
         raise ValueError("{} is required".format(name))
     if isinstance(value, (pd.Series, pd.DataFrame)):
@@ -146,7 +222,10 @@ def _as_array(value, name):
 
 
 class ThermalZone5R1CBlock(EsmBlock):
+    """The variables and energy balances of every zone in the model."""
+
     def _create(self, group=None):
+        """Add the three node balances, the comfort band and the load limits."""
         if group is None:
             return
         m = self.parent_block()
@@ -166,10 +245,16 @@ class ThermalZone5R1CBlock(EsmBlock):
         self.T_s = po.Var(self.ZONES, m.TIMESTEPS, within=po.Reals)
         self.T_m = po.Var(self.ZONES, m.TIMESTEPS, within=po.Reals)
 
+        # Cooling with no bus behind it: free and unpriced, which is what
+        # relieves summer overheating at zero cost when no cool_bus is
+        # attached. See docs/model-deviations.md.
         self.Q_cool_internal = po.Var(
             self.ZONES, m.TIMESTEPS, within=po.NonNegativeReals
         )
 
+        # One scalar slack per zone, priced in _objective_expression: an
+        # undersized heat supply then yields a feasible model that reports
+        # the breach, instead of an infeasible one nobody can debug.
         self.max_load_violation = po.Var(self.ZONES, within=po.NonNegativeReals)
 
         def Q_heat(zone, t):
@@ -183,10 +268,14 @@ class ThermalZone5R1CBlock(EsmBlock):
         self._Q_heat = Q_heat
         self._Q_cool = Q_cool
 
+        # Every envelope element is referenced to the mass temperature here,
+        # windows and ventilation included, which is where this model parts
+        # ways with the standard - see docs/model-deviations.md.
         def envelope_flow(zone, element, t):
             T_e = zone.T_e[t]
             return zone.H[element] * (self.T_m[zone, t] - T_e)
 
+        # Mass node, Eq. (20) of Schuetz et al. 2017.
         def mass_node_balance(zone, t, t_next):
             T_e = zone.T_e[t]
             return (
@@ -201,6 +290,9 @@ class ThermalZone5R1CBlock(EsmBlock):
 
         last = n_steps - 1
 
+        # The last step balances against step 0, so T_m closes cyclically
+        # over the horizon; with an initial_T_m the first step is pinned
+        # instead and the wrap-around constraint is dropped.
         def mass_rule(b, zone, t):
             if t < last:
                 return mass_node_balance(zone, t, t + 1)
@@ -219,6 +311,7 @@ class ThermalZone5R1CBlock(EsmBlock):
             ),
         )
 
+        # Surface node, Eq. (21) of Schuetz et al. 2017.
         self.surface_node_balance = po.Constraint(
             self.ZONES,
             m.TIMESTEPS,
@@ -230,6 +323,8 @@ class ThermalZone5R1CBlock(EsmBlock):
             ),
         )
 
+        # Air node, Eq. (22) of Schuetz et al. 2017: the node where the
+        # heating and cooling flows enter the zone.
         self.air_node_balance = po.Constraint(
             self.ZONES,
             m.TIMESTEPS,
@@ -240,6 +335,8 @@ class ThermalZone5R1CBlock(EsmBlock):
             ),
         )
 
+        # Comfort band on the air temperature, Kotzur 2018 Eqs. (3.1)-(3.2).
+        # Together with C_m this is what makes the zone dispatchable.
         self.comfort_ub = po.Constraint(
             self.ZONES,
             m.TIMESTEPS,
@@ -251,6 +348,8 @@ class ThermalZone5R1CBlock(EsmBlock):
             rule=lambda b, zone, t: self.T_air[zone, t] >= zone.comfort_lb[t],
         )
 
+        # Heating and cooling share the one slack, so the reported violation
+        # is the largest single breach rather than a sum of both.
         self.max_heating_load = po.Constraint(
             self.ZONES,
             m.TIMESTEPS,
@@ -265,6 +364,11 @@ class ThermalZone5R1CBlock(EsmBlock):
         )
 
     def _objective_expression(self):
+        """Price the max-load slack.
+
+        solph discovers this method by name on every constraint group and
+        adds what it returns to the objective.
+        """
         return sum(
             self.max_load_violation[zone] * zone.max_load_violation_penalty
             for zone in self.ZONES
@@ -273,11 +377,19 @@ class ThermalZone5R1CBlock(EsmBlock):
 
 @factory("zone5r1c")
 def _zone5r1c(name, params, buses, inputs, n_steps, step_size_h):
+    """Thermal zone: the custom ``ThermalZone5R1C`` node.
+
+    Consumes ``heat_bus``, the optional ``cool_bus`` and the time series
+    ``T_e``, ``gain_mass``, ``gain_surface``, ``comfort_lb`` and
+    ``comfort_ub``; whatever is left in ``params`` (``H_ms``, ``H_is``,
+    ``H_door``, ``C_m``, ``H``, ``max_load``, ...) goes to the constructor.
+    """
     heat_bus = registry.bus(buses, params, "heat_bus", name)
     cool_bus = None
     if params.get("cool_bus") is not None:
         cool_bus = registry.bus(buses, params, "cool_bus", name)
     else:
+        # Drop the explicit None, or **params would pass cool_bus twice.
         params.pop("cool_bus", None)
 
     series = {

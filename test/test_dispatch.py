@@ -1,3 +1,7 @@
+"""Dispatch behaviour of the components: storage, PV, heat pump and the
+thermal mass of the zone all react to prices the way they should."""
+
+
 import numpy as np
 import pandas as pd
 import pytest

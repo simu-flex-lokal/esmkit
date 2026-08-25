@@ -1,3 +1,7 @@
+"""Numerical parity of the 5R1C zone against the golden fixture captured from
+the pre-migration tsib implementation, plus the zone's own invariants."""
+
+
 import json
 
 import numpy as np

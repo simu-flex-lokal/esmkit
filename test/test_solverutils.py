@@ -1,3 +1,7 @@
+"""Solver handling: the HiGHS fallback ladder, explicit solver options, and
+the refusal of glpk."""
+
+
 import pytest
 
 from esmkit import build_system, node_results, solve

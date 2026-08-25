@@ -1,3 +1,6 @@
+"""Solver selection and invocation: which MILP solver to use, with which
+options, and how to retry HiGHS when it does not converge."""
+
 import logging
 import os
 
@@ -7,6 +10,10 @@ from pyomo.contrib.appsi.base import TerminationCondition
 
 
 def manageSolverOpts(solver, solverOpts):
+    """Fill ``solverOpts`` with the defaults for ``solver`` and return it.
+
+    Given options always win; only keys that are absent are added.
+    """
     defaultOpts = {}
 
     defaultOpts_gurobi = {
@@ -62,6 +69,11 @@ def manageSolverOpts(solver, solverOpts):
 
 
 def detect_solver():
+    """Return the solver to use: ``$SOLVER`` if set, else the first available.
+
+    Auto-detection tries gurobi, cplex, scip, cbc, highs - commercial and
+    faster solvers first, the free open-source HiGHS last.
+    """
     try:
         return os.environ["SOLVER"]
     except KeyError:
@@ -80,6 +92,8 @@ def detect_solver():
     )
 
 
+# Interior point without crossover or scaling: the setting that copes best
+# with the badly conditioned models this kit produces.
 HIGHS_OPTIONS = {
     "solver": "ipm",
     "simplex_scale_strategy": "off",
@@ -87,6 +101,8 @@ HIGHS_OPTIONS = {
 }
 
 
+# Tried in order, each merged onto HIGHS_OPTIONS: the aggressive interior
+# point setting first, then progressively tamer ones.
 HIGHS_FALLBACKS = (
     {},
     {"simplex_scale_strategy": "choose"},
@@ -96,6 +112,12 @@ HIGHS_FALLBACKS = (
 
 
 def solve_highs(pyomo_model, tee=False, solverOpts=None):
+    """Solve with HiGHS, walking the fallback ladder until a run is optimal.
+
+    Passing explicit ``solverOpts`` disables the ladder - only that single
+    setting is attempted. Raises ``RuntimeError`` listing every setting tried
+    if none reaches optimality.
+    """
     if solverOpts:
         attempts = [dict(HIGHS_OPTIONS, **solverOpts)]
     else:
@@ -105,6 +127,8 @@ def solve_highs(pyomo_model, tee=False, solverOpts=None):
     for options in attempts:
         highs = appsi.solvers.Highs()
         highs.config.stream_solver = tee
+        # Do not load a non-optimal solution: only a successful attempt
+        # writes its values back into the model.
         highs.config.load_solution = False
         highs.highs_options = dict(options)
         results = highs.solve(pyomo_model)
@@ -128,9 +152,12 @@ def solve_highs(pyomo_model, tee=False, solverOpts=None):
 
 
 def solve_model(pyomo_model, solver=None, tee=False, solverOpts=None):
+    """Solve a pyomo model with the given or auto-detected solver."""
     if solver is None:
         solver = detect_solver()
 
+    # glpk is a MILP solver, but it does not survive these models - reject it
+    # up front rather than let it return a wrong or infeasible answer.
     if solver == "glpk":
         raise ValueError(
             "Solver 'glpk' fails on badly conditioned energy system models such "

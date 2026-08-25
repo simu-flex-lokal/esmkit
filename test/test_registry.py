@@ -1,3 +1,7 @@
+"""The component registry and the base classes: what the kit registers, how a
+third party registers its own, and the guard against unwired pyomo blocks."""
+
+
 import numpy as np
 import pandas as pd
 import pytest
