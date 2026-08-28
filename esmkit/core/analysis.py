@@ -28,7 +28,7 @@ def bus_flows(results, bus, spec=None):
         As returned by `node_results`.
     bus: str, required
         Bus name, e.g. "elec" or "heat".
-    spec: SystemSpec, optional
+    spec: SystemSpec or dict, optional
         Used to find out which buses the thermal zone is attached to.
         Without it the template defaults ("heat"/"cool") are assumed.
 
@@ -64,8 +64,13 @@ def bus_flows(results, bus, spec=None):
 def _zone_flows(name, res, bus, spec):
     """The thermal zone's withdrawals, which are not reported as flows."""
     heat_bus, cool_bus = "heat", "cool"
-    if spec is not None and name in spec.components:
-        params = spec.components[name]
+    # a spec reaches this either as a SystemSpec or in its dict form, which
+    # is how it arrives from a model that only ever emitted the dict
+    components = getattr(spec, "components", None)
+    if components is None and isinstance(spec, dict):
+        components = spec.get("components", {})
+    if components and name in components:
+        params = components[name]
         heat_bus = params.get("heat_bus", heat_bus)
         cool_bus = params.get("cool_bus", cool_bus)
 

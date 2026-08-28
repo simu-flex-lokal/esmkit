@@ -110,6 +110,19 @@ def test_bus_flows_resolves_the_zone_buses_from_a_spec(results):
     assert "thermalzone" not in bus_flows(results, "elec", spec=spec)
 
 
+def test_bus_flows_accepts_a_spec_in_its_dict_form(results):
+    """A spec that arrived as JSON was never a SystemSpec - and a producer
+    which only ever emits the dict form is exactly the intended case."""
+    spec = {"version": "1",
+            "buses": {"heat": {"carrier": "heat"}, "cool": {"carrier": "cool"}},
+            "components": {"thermalzone": {"type": "zone5r1c",
+                                           "heat_bus": "heat",
+                                           "cool_bus": "cool"}}}
+
+    assert "thermalzone" in bus_flows(results, "heat", spec=spec)
+    assert "thermalzone" not in bus_flows(results, "elec", spec=spec)
+
+
 def test_bus_flows_is_empty_for_an_unknown_bus(results):
     assert bus_flows(results, "gas").empty
 
