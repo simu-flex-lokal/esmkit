@@ -14,6 +14,14 @@ recorded in ``capture_meta.json`` (this side: the tsib commit the inputs were
 read from) and ``golden_meta.json`` (the other side: the pre-migration
 ``tsib.energysystem`` stack the expected results came from).
 
+**It no longer runs against current tsib.** The 5R1C component it imports was removed
+from tsib on 2026-08-28 (phase 2 of the split); the equivalent numbers now come from
+``tsib.envelope.zone_parameters``, which tsib pins against *this* fixture in its own
+``test/test_envelope_contract.py``. Re-capturing from today's tsib would therefore
+re-pin parity rather than check it, which is why this script is kept as it was: it
+documents where the frozen data came from, and it runs only against a tsib checkout at
+the commit recorded in ``capture_meta.json``.
+
 This script writes the input half - it instantiates the old ``tsib`` zone,
 reads its resolved scalars and node-gain series back out, and stores them as
 ``zone_params_*.json`` and ``zone_inputs_*.csv`` - then copies the expected

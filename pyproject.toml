@@ -43,9 +43,12 @@ gurobi = [
 highs = [
     "highspy",
 ]
+plots = [
+    "matplotlib",
+]
 
 [dependency-groups]
-dev = ["pytest", "pytest-cov"]
+dev = ["pytest", "pytest-cov", "matplotlib"]
 examples = ["jupyter", "matplotlib"]
 
 [build-system]

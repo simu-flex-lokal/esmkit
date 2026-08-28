@@ -114,6 +114,40 @@ HiGHS is driven through `pyomo.contrib.appsi` and retries with progressively mor
 settings if a run does not terminate optimally. `glpk` is explicitly refused: it is a MILP solver,
 but it fails on badly conditioned models such as the 5R1C zone. See `esmkit/core/solverutils.py`.
 
+## Reading the results
+
+`node_results(model, nodes, index)` returns `{component: {series: values}}`. Two helpers turn
+that into the series people actually ask for, both pure pandas:
+
+```python
+from esmkit import bus_flows, net_grid_exchange
+
+flows = bus_flows(results, "elec")     # signed frame, positive = into the bus
+net = net_grid_exchange(results)       # one series [kW], import positive
+```
+
+`net_grid_exchange` is the series a grid powerflow computation consumes per building.
+
+## Plotting
+
+`esmkit.plotting` draws a solved system: `plot_dispatch` (every flow on a bus, stacked),
+`plot_storage`, `plot_grid_exchange` (with the tariff behind it) and `plot_price_response`.
+Every function takes an optional `ax` and returns the axes it drew on; nothing calls
+`plt.show()`. It needs matplotlib, which the kit itself does not require:
+
+```bash
+pip install esmkit[plots]
+```
+
+```python
+from esmkit import plotting
+
+with plotting.use_style():
+    fig, (a1, a2) = plt.subplots(2, 1, figsize=(11, 6), sharex=True)
+    plotting.plot_dispatch(results, "elec", ax=a1, window=("2010-01-04", "2010-01-11"))
+    plotting.plot_grid_exchange(results, price=tariff, ax=a2, window=("2010-01-04", "2010-01-11"))
+```
+
 ## Documentation
 
 - [docs/01_grid_pv_battery.ipynb](docs/01_grid_pv_battery.ipynb) — grid, PV and a battery

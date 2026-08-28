@@ -649,9 +649,13 @@ gurobi = [
 highs = [
     { name = "highspy" },
 ]
+plots = [
+    { name = "matplotlib" },
+]
 
 [package.dev-dependencies]
 dev = [
+    { name = "matplotlib" },
     { name = "pytest" },
     { name = "pytest-cov" },
 ]
@@ -664,15 +668,17 @@ examples = [
 requires-dist = [
     { name = "gurobipy", marker = "extra == 'gurobi'", specifier = ">=13.0.2" },
     { name = "highspy", marker = "extra == 'highs'" },
+    { name = "matplotlib", marker = "extra == 'plots'" },
     { name = "numpy" },
     { name = "oemof-solph", specifier = ">=0.6.4" },
     { name = "pandas" },
     { name = "pyomo" },
 ]
-provides-extras = ["gurobi", "highs"]
+provides-extras = ["gurobi", "highs", "plots"]
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "matplotlib" },
     { name = "pytest" },
     { name = "pytest-cov" },
 ]
