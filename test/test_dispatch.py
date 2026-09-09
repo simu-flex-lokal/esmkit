@@ -71,14 +71,22 @@ def test_thermal_storage_standby_loss():
         standby_loss_kW=0.05, charge_efficiency=1.0, discharge_efficiency=1.0,
     )
 
-    es, nodes = build_system(spec, {}, hours())
+    index = hours()
+    es, nodes = build_system(spec, {}, index)
     model, _ = solve(es)
     results = node_results(model, nodes)
 
     supplied = results["supply"]["out_heat"].sum()
     demanded = results["demand"]["in_heat"].sum()
 
-    assert supplied >= demanded - 1e-6
+    # The standby loss is proportional to capacity, not to content, so it is
+    # unavoidable and exactly predictable: everything the buffer is charged
+    # with is lost again. Asserting only supplied >= demanded would hold for
+    # a lossless store too, and would not test the loss at all.
+    assert supplied - demanded == pytest.approx(0.05 * len(index), abs=1e-6)
+    assert results["buffer"]["in_heat"].sum() == pytest.approx(
+        0.05 * len(index), abs=1e-6
+    )
 
 
 def test_pv_self_consumption_beats_export():
@@ -131,7 +139,11 @@ def test_pv_investment_sizes_to_the_optimum():
     model, _ = solve(es)
     capacity = node_results(model, nodes)["pv"]["capacity"]
 
-    assert 0 < capacity <= 10.0
+    # The optimum is interior, so max_capacity is not what determines it -
+    # asserting capacity <= max_capacity would only restate a bound the
+    # model already enforces. Pin the value instead.
+    assert capacity == pytest.approx(3.8637, rel=1e-3)
+    assert capacity < 10.0, "max_capacity must not be the binding constraint"
 
 
 def test_heat_pump_couples_two_buses():

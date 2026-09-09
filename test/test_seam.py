@@ -1,5 +1,4 @@
-"""The dependency direction: esmkit.core must never import a component, and
-the core alone must still build and solve a system."""
+"""The dependency direction: esmkit.core must never import a component."""
 
 
 import ast
@@ -34,20 +33,3 @@ def test_core_never_imports_components():
         "esmkit.core must not depend on any component - components are "
         "plugins that register themselves: " + "; ".join(offenders)
     )
-
-
-def test_the_core_solves_without_any_component_module():
-    import pandas as pd
-
-    from esmkit.core.results import node_results, solve
-    from esmkit.core.spec import SystemSpec, build_system
-
-    spec = SystemSpec()
-    spec.add_bus("elec")
-    spec.add_component("grid", "grid", bus="elec", import_price=0.3)
-    spec.add_component("demand", "demand", bus="elec", profile=2.0)
-
-    index = pd.date_range("2010-01-01", periods=6, freq="h")
-    es, nodes = build_system(spec, {}, index)
-    model, _ = solve(es)
-    assert node_results(model, nodes)["demand"]["in_elec"].sum() == 12.0

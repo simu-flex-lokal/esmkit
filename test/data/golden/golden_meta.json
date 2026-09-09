@@ -5,11 +5,13 @@
   "building_ix": 24,
   "comfortT_lb": 20.0,
   "comfortT_ub": 26.0,
-  "generated_by": "data/golden/_generate.py",
+  "generated_by": "regenerated from the current zone, see note",
   "generated_from_commit": "5069d3db962e352da596e402e552a8ca39c00eed",
   "n_steps_short": 168,
   "n_steps_year": 8760,
+  "note": "The expected values no longer come from the pre-migration tsib stack. Windows were moved to the surface node and ventilation to the air node on 2026-09-09, per Schuetz et al. 2017 Eqs. (21) and (22), which raised the specific heat demand of this building from 198.111 to 209.143 kWh/m2a. Parity with the pre-migration implementation was given up deliberately; these files now pin the current model against accidental drift. The input half (zone_params_*.json, zone_inputs_*) is unchanged and still comes from the tsib commit in capture_meta.json.",
+  "previous_specific_heat_kWh_per_m2": 198.11077500334483,
   "solver": "highs",
-  "stack": "tsib.energysystem (pre-migration)",
+  "stack": "esmkit.components.zone5r1c (envelope wiring corrected 2026-09-09)",
   "weather": "TRY_4"
 }

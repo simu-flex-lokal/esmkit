@@ -1,5 +1,9 @@
-"""Numerical parity of the 5R1C zone against the golden fixture captured from
-the pre-migration tsib implementation, plus the zone's own invariants."""
+"""The 5R1C zone against its golden fixture, plus the zone's own invariants.
+
+The fixture no longer pins parity with the pre-migration tsib stack: the
+envelope wiring was corrected on 2026-09-09 and the expected values were
+regenerated from the corrected model. What it pins now is that the zone's
+numbers do not drift by accident - see data/golden/golden_meta.json."""
 
 
 import json
@@ -22,7 +26,7 @@ def _solve_zone(n_steps=None, **zone_kwargs):
     return model, nodes, node_results(model, nodes, index=index)
 
 
-def test_parity_short_horizon():
+def test_regression_short_horizon():
     _, _, results = _solve_zone(n_steps=168)
 
     expected = pd.read_csv(golden("zone_168h.csv"), index_col=0)
@@ -34,13 +38,33 @@ def test_parity_short_horizon():
         assert deviation < 1e-5, "{} deviates by {:.2e}".format(column, deviation)
 
 
-def test_parity_full_year_aggregates():
-    _, _, results = _solve_zone()
+@pytest.fixture(scope="module")
+def full_year():
+    """One full-year solve, shared by the tests that check it.
+
+    The 8760 h solve is by far the most expensive thing in the suite; the
+    aggregate and the hourly check cover different columns of the same run,
+    so they must not pay for it twice.
+    """
+    return _solve_zone()
+
+
+def test_regression_full_year(full_year):
+    _, _, results = full_year
     expected = json.load(open(golden("zone_year_aggregates.json")))
     zone = results["thermalzone"]
 
     heat = zone["timeseries"]["Heating Load"]
-    assert heat.sum() == pytest.approx(expected["annual_heat_kWh"], rel=1e-3)
+    hourly = pd.read_csv(golden("zone_year.csv.gz"), index_col=0)["Heating Load"]
+    assert len(heat) == len(hourly) == 8760
+
+    # The hourly bound is the strong one: it implies the annual and monthly
+    # sums below, since 8760 * 1e-3 kW sits well inside their relative
+    # tolerances. They stay because they read the cooling load and the
+    # capacity, which the hourly series does not carry.
+    deviation = np.abs(heat.values - hourly.values)
+    assert deviation.max() < 1e-3, "max deviation {:.2e} kW".format(deviation.max())
+
     assert zone["timeseries"]["Cooling Load"].sum() == pytest.approx(
         expected["annual_cool_kWh"], rel=1e-3
     )
@@ -51,17 +75,6 @@ def test_parity_full_year_aggregates():
     monthly = heat.groupby(heat.index.month).sum()
     for month, value in expected["monthly_heat_kWh"].items():
         assert monthly[int(month)] == pytest.approx(value, rel=1e-2)
-
-
-def test_parity_full_year_series():
-    _, _, results = _solve_zone()
-
-    expected = pd.read_csv(golden("zone_year.csv.gz"), index_col=0)["Heating Load"]
-    actual = results["thermalzone"]["timeseries"]["Heating Load"]
-    assert len(actual) == len(expected) == 8760
-
-    deviation = np.abs(actual.values - expected.values)
-    assert deviation.max() < 1e-3, "max deviation {:.2e} kW".format(deviation.max())
 
 
 def test_zone_is_an_lp():
