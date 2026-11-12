@@ -11,6 +11,9 @@ __enercore_cache__/
 dist
 .venv/
 
+# local backlog / design ideas — not for GitHub
+backlog/
+
 # file types to ignore
 *.pyc
 *.egg-info
