@@ -14,6 +14,15 @@ convective gain on the air node, phi_ia of Schuetz Eq. (14); omitted, the
 air node reuses ``gain_surface`` and the surface gain is still spent at two
 nodes. That one is a deviation still standing, because phi_int does not
 reach the zone as a series of its own.
+
+``comfort_setpoint`` and ``comfort_window`` are optional as well and go
+together. Given, the air temperature must meet the setpoint on average over
+each window, on top of the band. Without them the band floor is the only
+requirement, so every shift of heat has to go above the floor and raises the
+mean temperature. That costs heat. Around a setpoint the zone can also go
+below it and make up for it later in the same window, at no extra heat over
+a cyclic horizon. Neither paper has this; ``docs/model-deviations.md`` records
+it as an extension.
 """
 
 import warnings
@@ -42,8 +51,9 @@ SERIES_PARAMETERS = ["T_e", "gain_mass", "gain_surface", "comfort_lb", "comfort_
 
 #: Series that may be omitted. ``gain_air`` is the convective share of the
 #: internal gains, phi_ia in Schuetz Eq. (14); without it the air node falls
-#: back to ``gain_surface`` and keeps deviation 3.
-OPTIONAL_SERIES = ["gain_air"]
+#: back to ``gain_surface`` and keeps deviation 3. ``comfort_setpoint`` and
+#: ``comfort_window`` add the window-mean requirement on the air temperature.
+OPTIONAL_SERIES = ["gain_air", "comfort_setpoint", "comfort_window"]
 
 
 class ThermalZone5R1C(EsmComponent):
@@ -72,6 +82,13 @@ class ThermalZone5R1C(EsmComponent):
     the thermal mass is a dispatchable flexibility resource inside the same
     LP as the storage, the PV and the prices: the model may pre-heat into
     cheap hours and coast through expensive ones.
+
+    With ``comfort_setpoint`` and ``comfort_window`` the band is no longer
+    the whole requirement. Steps that share a window id must reach the
+    setpoint on average, so the zone may also run below the setpoint and
+    catch up later in the same window. Only the air temperature up to
+    ``comfort_ub`` counts towards that mean: heat above the band, which the
+    penalty prices, cannot pay for hours below the setpoint.
     """
 
     def __init__(
@@ -96,6 +113,8 @@ class ThermalZone5R1C(EsmComponent):
         max_load_violation_penalty=100.0,
         initial_T_m=None,
         design_capacity=None,
+        comfort_setpoint=None,
+        comfort_window=None,
     ):
         """Build the zone and check that all its time series agree in length.
 
@@ -135,6 +154,17 @@ class ThermalZone5R1C(EsmComponent):
                 replaces the cyclic closure of the mass balance.
             design_capacity: capacity reported in the results, kW. Defaults
                 to ``max_load``.
+            comfort_setpoint: air temperature to meet on average, degC per
+                time step. NaN marks a step that does not count, for
+                example outside the heating period. Where it counts it must
+                lie inside ``[comfort_lb, comfort_ub]``. Requires
+                ``comfort_window``.
+            comfort_window: window id per time step. Steps with the same id
+                are averaged together, whether or not they are contiguous,
+                so the caller decides which hours may compensate each other:
+                one id per day, separate ids for night and day, or only the
+                hours someone is awake. NaN marks a step that does not
+                count. Requires ``comfort_setpoint``.
         """
         inputs = {heat_bus: Flow()}
         if cool_bus is not None:
@@ -166,6 +196,13 @@ class ThermalZone5R1C(EsmComponent):
             float(design_capacity) if design_capacity is not None else self.max_load
         )
 
+        if (comfort_setpoint is None) != (comfort_window is None):
+            raise ValueError(
+                "Zone '{}' needs comfort_setpoint and comfort_window together: "
+                "the setpoint says what to meet, the window over which "
+                "hours".format(label)
+            )
+
         series = {
             "T_e": T_e,
             "gain_mass": gain_mass,
@@ -173,6 +210,8 @@ class ThermalZone5R1C(EsmComponent):
             "comfort_lb": comfort_lb,
             "comfort_ub": comfort_ub,
             "gain_air": gain_air,
+            "comfort_setpoint": comfort_setpoint,
+            "comfort_window": comfort_window,
         }
         lengths = set()
         for key in SERIES_PARAMETERS:
@@ -200,6 +239,40 @@ class ThermalZone5R1C(EsmComponent):
                 )
             )
         self.n_steps = lengths.pop()
+        self.comfort_windows = self._comfort_windows()
+
+    def _comfort_windows(self):
+        """Group the counted steps by window id.
+
+        Returns:
+            A list with one list of step indices per window, in ascending
+            order of the id. Empty without a setpoint.
+        """
+        if self.comfort_setpoint is None:
+            return []
+        counted = np.isfinite(self.comfort_setpoint) & np.isfinite(self.comfort_window)
+        tol = 1e-9
+        outside = counted & (
+            (self.comfort_setpoint < self.comfort_lb - tol)
+            | (self.comfort_setpoint > self.comfort_ub + tol)
+        )
+        if outside.any():
+            first = int(np.flatnonzero(outside)[0])
+            raise ValueError(
+                "Zone '{}' has a comfort_setpoint outside [comfort_lb, "
+                "comfort_ub] at {} steps, first at step {} ({} not in "
+                "[{}, {}])".format(
+                    self.label,
+                    int(outside.sum()),
+                    first,
+                    self.comfort_setpoint[first],
+                    self.comfort_lb[first],
+                    self.comfort_ub[first],
+                )
+            )
+        steps = np.flatnonzero(counted)
+        ids = self.comfort_window[steps]
+        return [steps[ids == wid].tolist() for wid in np.unique(ids)]
 
     def constraint_group(self):
         """Return the block class that constrains this zone."""
@@ -253,6 +326,8 @@ class ThermalZone5R1C(EsmComponent):
         timeseries["Comfort Violation"] = [
             po.value(block.comfort_violation[self, t]) for t in steps
         ]
+        if self.comfort_setpoint is not None:
+            timeseries["Comfort Setpoint"] = self.comfort_setpoint
 
         static = {
             "Capacity": self.design_capacity,
@@ -453,6 +528,25 @@ class ThermalZone5R1CBlock(EsmBlock):
             rule=lambda b, zone, t: self.T_air[zone, t] >= zone.comfort_lb[t],
         )
 
+        # Window mean of the air temperature, weighted by step length so it
+        # stays a mean over time. comfort_violation is the part above
+        # comfort_ub; subtracting it caps the credit at the ceiling.
+        n_windows = max([len(zone.comfort_windows) for zone in self.ZONES] + [0])
+
+        def comfort_mean_rule(b, zone, w):
+            if w >= len(zone.comfort_windows):
+                return po.Constraint.Skip
+            steps = zone.comfort_windows[w]
+            return sum(
+                m.timeincrement[t]
+                * (self.T_air[zone, t] - self.comfort_violation[zone, t])
+                for t in steps
+            ) >= sum(m.timeincrement[t] * zone.comfort_setpoint[t] for t in steps)
+
+        self.comfort_mean = po.Constraint(
+            self.ZONES, range(n_windows), rule=comfort_mean_rule
+        )
+
         # Heating and cooling share the one slack, so the reported violation
         # is the largest single breach rather than a sum of both.
         self.max_heating_load = po.Constraint(
@@ -497,7 +591,8 @@ def _zone5r1c(name, params, buses, inputs, n_steps, step_size_h):
 
     Consumes ``heat_bus``, the optional ``cool_bus`` and the time series
     ``T_e``, ``gain_mass``, ``gain_surface``, ``comfort_lb`` and
-    ``comfort_ub``, plus the optional ``gain_air``; whatever is left in
+    ``comfort_ub``, plus the optional ``gain_air``, ``comfort_setpoint`` and
+    ``comfort_window``; whatever is left in
     ``params`` (``H_ms``, ``H_is``, ``H_door``, ``C_m``, ``H``,
     ``max_load``, ...) goes to the constructor.
     """

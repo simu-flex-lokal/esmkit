@@ -69,7 +69,7 @@ if it varies over time.
 | `heat_pump` | `bus_in`, `bus_out`, `cop` (steps with `cop <= 0` are unavailable), plus capacity or investment keys |
 | `battery` | `bus_in`, `bus_out`, `self_discharge_per_h` = `0.0`, `fixed_losses_absolute` = `0.0`, `charge_efficiency` = `0.95`, `discharge_efficiency` = `0.95`, `soc_min` = `0.0`, `soc_max` = `1.0`, `charge_power_limit` / `discharge_power_limit` = unlimited, `balanced` = `True`, `initial_soc` = none (setting it makes the storage unbalanced), plus capacity or investment keys |
 | `thermal_storage` | as `battery`, plus `standby_loss_kW` = `0.0` (fills `fixed_losses_absolute`) |
-| `zone5r1c` | `heat_bus`, `cool_bus` = none (cooling is then fictitious and free), series `T_e`, `gain_mass`, `gain_surface`, `comfort_lb`, `comfort_ub`, scalars `H_ms`, `H_is`, `H_door`, `C_m`, `H` (a dict over `Walls`, `Roof`, `Floor`, `Windows`, `Ventilation`), `max_load`, `max_load_violation_penalty` = `100.0`, `initial_T_m` = none (the state is then cyclic), `design_capacity` = `max_load` |
+| `zone5r1c` | `heat_bus`, `cool_bus` = none (cooling is then fictitious and free), series `T_e`, `gain_mass`, `gain_surface`, `comfort_lb`, `comfort_ub`, scalars `H_ms`, `H_is`, `H_door`, `C_m`, `H` (a dict over `Walls`, `Roof`, `Floor`, `Windows`, `Ventilation`), `max_load`, `max_load_violation_penalty` = `100.0`, `initial_T_m` = none (the state is then cyclic), `design_capacity` = `max_load`, `can_cool` = `True`, `comfort_ub_penalty` = none (the ceiling is then hard), series `gain_air` = none (the air node then reuses `gain_surface`), series `comfort_setpoint` and `comfort_window` = none, given together (the air temperature must then meet the setpoint on average over each window id; NaN steps do not count) |
 
 ## Input references
 

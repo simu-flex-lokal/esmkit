@@ -78,6 +78,31 @@ instant the balance is written.
 barely affected; hourly traces are shifted by one step against a backward-Euler
 implementation of the same equations.
 
+## Extension: a comfort setpoint met on average
+
+Not a deviation from the references but an addition neither has. Given
+`comfort_setpoint` and `comfort_window`, `comfort_mean` requires, for every
+window id,
+
+    sum_t dt * (T_air - comfort_violation) >= sum_t dt * comfort_setpoint
+
+over the steps that carry that id and a finite setpoint, on top of the band.
+*Why*: with the band alone the floor is the baseline. Every shift of heat has
+to go above it, which raises the mean air temperature and costs heat. Summing
+the three node balances over a cyclic horizon cancels the storage term, so
+the total heat depends only on the mean air temperature. Once the mean is
+fixed, shifting heat around the setpoint costs no extra heat.
+*Consequences*: the mean treats 1 K too cold as fully compensated by 1 K too
+warm later in the same window, which is an assumption about comfort, not
+physics. The LP uses it to the full and drives the air temperature from one
+bound to the other. Under a flat price and a constant COP every trajectory
+with the right mean costs the same, so the trajectory the solver returns is
+arbitrary. Which hours may compensate each other is the caller's choice via
+the window ids. With one window per calendar day, warm night hours pay for
+cold evening hours whenever nights are cheap. Subtracting `comfort_violation`
+caps the credit at `comfort_ub`, so overheating above the band cannot pay for
+hours below the setpoint.
+
 ## Boundary condition on `T_m`
 
 Not a deviation, but easy to trip over: at the last step `mass_rule` balances
